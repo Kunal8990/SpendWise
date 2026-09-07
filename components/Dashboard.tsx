@@ -122,7 +122,7 @@ function MetricCard({
   );
 }
 
-export default function Dashboard({ userEmail }: { userEmail?: string }) {
+export default function Dashboard({ userEmail, userName }: { userEmail?: string; userName?: string }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>(demoExpenses);
   const [showExpense, setShowExpense] = useState(false);
@@ -151,7 +151,13 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
 
   useEffect(() => {
     // 1. Determine active user
-    const activeUser = localStorage.getItem('spendwise_active_user');
+    let activeUser = localStorage.getItem('spendwise_active_user');
+
+    // If activeUser is not yet in localStorage, check if user is passed via props (e.g. Google OAuth login)
+    if (!activeUser && (userName || userEmail)) {
+      activeUser = userName || userEmail?.split('@')[0] || "User";
+      localStorage.setItem('spendwise_active_user', activeUser);
+    }
     activeUserRef.current = activeUser;
 
     // 2. Load & Validate User Profile
@@ -164,7 +170,8 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
     } else if (activeUser) {
       currentUserProfile = Object.values(users).find((u: any) =>
         (u?.username || "").toLowerCase() === activeUser.toLowerCase() ||
-        (u?.email || "").toLowerCase() === activeUser.toLowerCase()
+        (u?.email || "").toLowerCase() === activeUser.toLowerCase() ||
+        (u?.name || "").toLowerCase() === activeUser.toLowerCase()
       );
     }
 
@@ -189,10 +196,66 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
       localStorage.setItem('spendwise_onboarding', JSON.stringify(currentUserProfile));
     } else if (parsedOnboarding && onboardingBelongsToActiveUser) {
       activeProfile = parsedOnboarding;
+    } else if (activeUser || userEmail || userName) {
+      // Auto-generate profile for authenticated OAuth / Supabase user
+      const defaultName = userName || activeUser || "User";
+      const defaultEmail = userEmail || (activeUser?.includes('@') ? activeUser : `${activeUser}@spendwise.local`);
+      activeProfile = {
+        name: defaultName,
+        email: defaultEmail,
+        username: activeUser || defaultName,
+        age: "28",
+        userType: "Professional",
+        income: "75000",
+        goal: "track",
+        currentSpend: "0",
+        monthlyInvestment: "0",
+        profileCompleted: true
+      };
+      users[activeUser || defaultName] = activeProfile;
+      localStorage.setItem('spendwise_users', JSON.stringify(users));
+      localStorage.setItem('spendwise_onboarding', JSON.stringify(activeProfile));
     }
 
     if (!activeProfile) {
-      window.location.replace("/");
+      // Fallback: check Supabase client session before redirecting
+      try {
+        const supabase = createClient();
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (user) {
+            const fallbackName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || "User";
+            const fallbackProfile = {
+              name: fallbackName,
+              email: user.email || `${fallbackName}@spendwise.local`,
+              username: fallbackName,
+              age: "28",
+              userType: "Professional",
+              income: "75000",
+              goal: "track",
+              currentSpend: "0",
+              monthlyInvestment: "0",
+              profileCompleted: true
+            };
+            localStorage.setItem('spendwise_active_user', fallbackName);
+            localStorage.setItem('spendwise_onboarding', JSON.stringify(fallbackProfile));
+            setOnboardingData(fallbackProfile);
+            setEditSettings({
+              name: fallbackProfile.name,
+              income: fallbackProfile.income,
+              monthlyInvestment: fallbackProfile.monthlyInvestment,
+              age: fallbackProfile.age,
+              gender: "",
+              occupation: "",
+              dob: "",
+              userType: fallbackProfile.userType
+            });
+          } else {
+            window.location.replace("/");
+          }
+        });
+      } catch (e) {
+        window.location.replace("/");
+      }
       return;
     }
 
@@ -294,7 +357,7 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
     }
 
     isInitialLoadDone.current = true;
-  }, [userEmail]);
+  }, [userEmail, userName]);
 
   // Persist expenses when they change from the UI
   useEffect(() => {

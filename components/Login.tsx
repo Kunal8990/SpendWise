@@ -56,6 +56,20 @@ export default function Login() {
   });
 
   useEffect(() => {
+    // Check for any OAuth errors passed via URL
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const errorParam = urlParams.get("error");
+      if (errorParam) {
+        setMessage(
+          errorParam === "auth_failed" 
+            ? "Authentication was interrupted or failed. Please try signing in again."
+            : decodeURIComponent(errorParam)
+        );
+        setMessageType("error");
+      }
+    }
+
     // Only process Supabase user if actively returning from OAuth callback (URL has code or hash)
     const isOAuthReturn = typeof window !== "undefined" && (
       window.location.search.includes("code=") || 
@@ -210,14 +224,27 @@ export default function Login() {
 
   async function googleLogin() {
     setIsGuestLoading(true);
-    const supabase = createClient();
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo }
-    });
-    if (error) {
-      setMessage(error.message);
+    setMessage("");
+    try {
+      const supabase = createClient();
+      const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          }
+        }
+      });
+      if (error) {
+        setMessage(error.message);
+        setMessageType("error");
+        setIsGuestLoading(false);
+      }
+    } catch (err: any) {
+      setMessage(err?.message || "Failed to initiate Google authentication. Please try again.");
       setMessageType("error");
       setIsGuestLoading(false);
     }
