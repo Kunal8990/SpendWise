@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { validateEmail, checkRateLimit } from "@/lib/auth/security";
 import { authStore } from "@/lib/auth/user-store";
+import { sendPasswordResetEmail } from "@/lib/auth/email";
 
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
@@ -37,11 +38,21 @@ export async function POST(request: Request) {
   // Look up user
   const user = authStore.findUserByEmail(emailRes.normalized);
 
-  // If user exists, create secure reset token (TC-065, TC-069)
+  // If user exists, create secure reset token and send branded email (TC-065, TC-069)
   let resetToken = undefined;
   if (user) {
     const tokenInfo = authStore.createPasswordResetToken(user.id);
     resetToken = tokenInfo.token;
+
+    const origin = request.headers.get("origin") || request.headers.get("host") || "https://spendwise.app";
+    const baseUrl = origin.startsWith("http") ? origin : `https://${origin}`;
+
+    sendPasswordResetEmail({
+      email: user.email,
+      name: user.name,
+      resetToken,
+      baseUrl
+    });
   }
 
   // Uniform response preventing account enumeration (TC-066, TC-075)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { 
   Mail, 
@@ -1172,7 +1173,16 @@ export default function Login() {
                     className="mt-0.5 rounded border-zinc-700 bg-zinc-900 text-violet-500 focus:ring-violet-500/20"
                     aria-label="Accept terms and conditions"
                   />
-                  <span>I agree to the <span className="text-violet-400 underline">Terms of Service</span> and <span className="text-violet-400 underline">Privacy Policy</span>.</span>
+                  <span>
+                    I agree to the{" "}
+                    <Link href="/terms" target="_blank" className="text-violet-400 underline hover:text-violet-300">
+                      Terms of Service
+                    </Link>{" "}
+                    and{" "}
+                    <Link href="/privacy" target="_blank" className="text-violet-400 underline hover:text-violet-300">
+                      Privacy Policy
+                    </Link>.
+                  </span>
                 </label>
               </div>
             )}
@@ -1204,6 +1214,15 @@ export default function Login() {
               <span>{message}</span>
             </div>
           )}
+        </div>
+
+        {/* Sleek Footer Navigation */}
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-zinc-500">
+          <Link href="/terms" className="hover:text-violet-400 transition-colors">Terms of Service</Link>
+          <Link href="/privacy" className="hover:text-violet-400 transition-colors">Privacy Policy</Link>
+          <Link href="/disclaimer" className="hover:text-violet-400 transition-colors">Disclaimer</Link>
+          <Link href="/contact" className="hover:text-violet-400 transition-colors">Help &amp; FAQ</Link>
+          <Link href="/about" className="hover:text-violet-400 transition-colors">About</Link>
         </div>
       </div>
     </main>

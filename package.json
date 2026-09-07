@@ -10,6 +10,7 @@
     "test": "npx tsx tests/auth-suite.ts"
   },
   "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.6",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "lucide-react": "latest",
@@ -25,6 +26,7 @@
     "@types/react-dom": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "wrangler": "^4.129.0"
   }
 }

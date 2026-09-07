@@ -1,6 +1,7 @@
  "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   Activity,
   ArrowDownRight,
@@ -11,9 +12,11 @@ import {
   CircleDollarSign,
   CreditCard,
   Dumbbell,
+  ExternalLink,
   FileText,
   Fuel,
   HeartPulse,
+  HelpCircle,
   Home,
   Landmark,
   LayoutDashboard,
@@ -86,15 +89,22 @@ function MetricCard({
   label,
   value,
   delta,
+  deltaType = "positive",
   icon: Icon,
   onClick
 }: {
   label: string;
   value: string;
   delta?: string;
+  deltaType?: "positive" | "negative" | "neutral";
   icon: React.ComponentType<{ size?: number; className?: string }>;
   onClick?: () => void;
 }) {
+  const deltaColor = 
+    deltaType === "positive" ? "text-emerald-400" :
+    deltaType === "negative" ? "text-rose-400" :
+    "text-zinc-500 font-normal";
+
   return (
     <div 
       className={`rounded-2xl border border-zinc-800/90 bg-zinc-950/75 p-5 ${onClick ? 'cursor-pointer hover:border-violet-500/30 hover:bg-zinc-900 transition-all' : ''}`}
@@ -107,7 +117,7 @@ function MetricCard({
         </div>
       </div>
       <div className="mt-4 text-2xl font-black tracking-tight">{value}</div>
-      {delta && <div className="mt-1 text-xs text-emerald-400">{delta}</div>}
+      {delta && <div className={`mt-1 text-xs ${deltaColor}`}>{delta}</div>}
     </div>
   );
 }
@@ -424,6 +434,77 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
   const saved = monthlyIncome - totalSpent - investment;
   const savingsRate = monthlyIncome > 0 ? ((saved / monthlyIncome) * 100).toFixed(1) : "0";
 
+  // Real month-over-month comparisons (unlocked after next month / when history exists)
+  const prevMonthData = useMemo(() => {
+    if (dynamicMonthlyTrend.length < 2) return null;
+    return dynamicMonthlyTrend[dynamicMonthlyTrend.length - 2];
+  }, [dynamicMonthlyTrend]);
+
+  const prevInvestmentData = useMemo(() => {
+    if (dynamicInvestmentTrend.length < 2) return null;
+    return dynamicInvestmentTrend[dynamicInvestmentTrend.length - 2];
+  }, [dynamicInvestmentTrend]);
+
+  const spentDeltaInfo = useMemo(() => {
+    if (!prevMonthData) {
+      return {
+        text: "Comparison available next month",
+        type: "neutral" as const
+      };
+    }
+    const prevSpent = prevMonthData.spent;
+    if (prevSpent === 0) {
+      return {
+        text: totalSpent > 0 ? "First month with expenses" : `Same as ${prevMonthData.month}`,
+        type: "neutral" as const
+      };
+    }
+    const diff = totalSpent - prevSpent;
+    const pct = ((diff) / prevSpent) * 100;
+    const pctStr = Math.abs(pct).toFixed(1);
+    if (diff < 0) {
+      return {
+        text: `${pctStr}% lower than ${prevMonthData.month}`,
+        type: "positive" as const
+      };
+    } else if (diff > 0) {
+      return {
+        text: `${pctStr}% higher than ${prevMonthData.month}`,
+        type: "negative" as const
+      };
+    }
+    return {
+      text: `Same as ${prevMonthData.month}`,
+      type: "neutral" as const
+    };
+  }, [prevMonthData, totalSpent]);
+
+  const investedDeltaInfo = useMemo(() => {
+    if (!prevInvestmentData) {
+      return {
+        text: "Comparison available next month",
+        type: "neutral" as const
+      };
+    }
+    const prevInvested = prevInvestmentData.invested;
+    const diff = investment - prevInvested;
+    if (diff > 0) {
+      return {
+        text: `+${money(diff)} vs ${prevInvestmentData.month}`,
+        type: "positive" as const
+      };
+    } else if (diff < 0) {
+      return {
+        text: `-${money(Math.abs(diff))} vs ${prevInvestmentData.month}`,
+        type: "negative" as const
+      };
+    }
+    return {
+      text: `Same as ${prevInvestmentData.month}`,
+      type: "neutral" as const
+    };
+  }, [prevInvestmentData, investment]);
+
   const dynamicCategoryBreakdown = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const expense of allExpenses) {
@@ -660,10 +741,20 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
             ))}
           </div>
 
-          <div className="mt-10 border-t border-zinc-800 pt-6 space-y-2">
+          <div className="mt-8 border-t border-zinc-800 pt-5 space-y-2">
             <button onClick={() => { setActive("Reports"); setMobileOpen(false); }} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${active === "Reports" ? "bg-violet-500/12 text-violet-300 ring-1 ring-violet-500/15" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"}`}><ShieldCheck size={18}/> Financial Score</button>
             <button onClick={() => { setActive("Achievements"); setMobileOpen(false); }} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${active === "Achievements" ? "bg-violet-500/12 text-violet-300 ring-1 ring-violet-500/15" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"}`}><Sparkles size={18}/> Achievements</button>
             <button onClick={() => { setActive("Settings"); setMobileOpen(false); }} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${active === "Settings" ? "bg-violet-500/12 text-violet-300 ring-1 ring-violet-500/15" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"}`}><Settings size={18}/> Settings</button>
+          </div>
+
+          <div className="mt-4 border-t border-zinc-900 pt-3 pb-24 px-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-600">
+            <Link href="/terms" target="_blank" className="hover:text-zinc-400">Terms</Link>
+            <span>•</span>
+            <Link href="/privacy" target="_blank" className="hover:text-zinc-400">Privacy</Link>
+            <span>•</span>
+            <Link href="/disclaimer" target="_blank" className="hover:text-zinc-400">Disclaimer</Link>
+            <span>•</span>
+            <Link href="/contact" target="_blank" className="hover:text-zinc-400">Support</Link>
           </div>
 
           <div className="absolute bottom-6 left-6 right-6 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
@@ -780,10 +871,10 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
                 )}
 
                 <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <MetricCard label={onboardingData?.userType === "Student" ? "Pocket money" : "Monthly income"} value={money(monthlyIncome)} delta="On track" icon={Wallet}/>
-                  <MetricCard label="Spent" value={money(totalSpent)} delta="6.7% lower than Aug" icon={ArrowDownRight} onClick={() => setActive("Transactions")}/>
-                  <MetricCard label="Saved" value={money(saved)} delta="24.3% savings rate" icon={PiggyBank}/>
-                  <MetricCard label="Invested" value={money(investment)} delta="+₹2,000 vs last month" icon={TrendingUp}/>
+                  <MetricCard label={onboardingData?.userType === "Student" ? "Pocket money" : "Monthly income"} value={money(monthlyIncome)} delta="On track" deltaType="positive" icon={Wallet}/>
+                  <MetricCard label="Spent" value={money(totalSpent)} delta={spentDeltaInfo.text} deltaType={spentDeltaInfo.type} icon={ArrowDownRight} onClick={() => setActive("Transactions")}/>
+                  <MetricCard label="Saved" value={money(saved)} delta={`${savingsRate}% savings rate`} deltaType={Number(savingsRate) >= 20 ? "positive" : "neutral"} icon={PiggyBank}/>
+                  <MetricCard label="Invested" value={money(investment)} delta={investedDeltaInfo.text} deltaType={investedDeltaInfo.type} icon={TrendingUp}/>
                 </section>
 
                 <section className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
@@ -791,9 +882,17 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="font-bold">Spending trend</h2>
-                        <p className="mt-1 text-xs text-zinc-600">Last six months</p>
+                        <p className="mt-1 text-xs text-zinc-600">
+                          {dynamicMonthlyTrend.length < 2 ? "First month tracking" : "Last six months"}
+                        </p>
                       </div>
-                      <div className="rounded-lg bg-zinc-900 px-3 py-2 text-xs text-zinc-500">Monthly</div>
+                      {dynamicMonthlyTrend.length < 2 ? (
+                        <div className="rounded-lg bg-violet-500/10 px-3 py-1.5 text-xs text-violet-300 border border-violet-500/20 font-medium">
+                          Comparison unlocks next month
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-zinc-900 px-3 py-2 text-xs text-zinc-500">Monthly</div>
+                      )}
                     </div>
                     <div className="mt-6 h-72">
                       <ResponsiveContainer width="100%" height="100%">
@@ -904,13 +1003,21 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="font-bold">Spending trend</h2>
-                      <p className="mt-1 text-xs text-zinc-600">Last six months</p>
+                      <p className="mt-1 text-xs text-zinc-600">
+                        {dynamicMonthlyTrend.length < 2 ? "First month tracking" : "Last six months"}
+                      </p>
                     </div>
-                    <div className="rounded-lg bg-zinc-900 px-3 py-2 text-xs text-zinc-500">Monthly</div>
+                    {dynamicMonthlyTrend.length < 2 ? (
+                      <div className="rounded-lg bg-violet-500/10 px-3 py-1.5 text-xs text-violet-300 border border-violet-500/20 font-medium">
+                        Comparison unlocks next month
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-zinc-900 px-3 py-2 text-xs text-zinc-500">Monthly</div>
+                    )}
                   </div>
                   <div className="mt-6 h-72">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={monthlyTrend}>
+                      <LineChart data={dynamicMonthlyTrend}>
                         <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false}/>
                         <XAxis dataKey="month" stroke="#71717a" fontSize={12} tickLine={false} axisLine={false}/>
                         <YAxis stroke="#71717a" fontSize={12} tickLine={false} axisLine={false}/>
@@ -973,8 +1080,10 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
                     <div className="mt-4 text-4xl font-black text-emerald-400">{money(saved)}</div>
                     <div className="mt-2 text-sm text-zinc-500">
                       Your current savings rate is <span className="font-bold text-white">{savingsRate}%</span>. 
-                      {dynamicMonthlyTrend.length >= 2 && (
+                      {dynamicMonthlyTrend.length >= 2 ? (
                         <span className="block mt-1">Last month you saved <strong className="text-white">{money(dynamicMonthlyTrend[dynamicMonthlyTrend.length - 2].saved)}</strong>.</span>
+                      ) : (
+                        <span className="block mt-1 text-zinc-500">First month tracking — month-over-month comparisons unlock next month.</span>
                       )}
                     </div>
                   </div>
@@ -1415,6 +1524,29 @@ export default function Dashboard({ userEmail }: { userEmail?: string }) {
                     >
                       Save Changes
                     </button>
+                  </div>
+
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
+                    <h3 className="font-bold">Legal &amp; Policies</h3>
+                    <p className="mt-1 text-sm text-zinc-500 mb-4">Review our terms of use, privacy standards, and support center.</p>
+                    <div className="grid gap-2.5 sm:grid-cols-2 text-sm">
+                      <Link href="/terms" target="_blank" className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5 text-zinc-300 hover:border-violet-500/40 hover:text-white transition-all">
+                        <span>Terms &amp; Conditions</span>
+                        <ExternalLink size={14} className="text-zinc-500" />
+                      </Link>
+                      <Link href="/privacy" target="_blank" className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5 text-zinc-300 hover:border-violet-500/40 hover:text-white transition-all">
+                        <span>Privacy Policy</span>
+                        <ExternalLink size={14} className="text-zinc-500" />
+                      </Link>
+                      <Link href="/disclaimer" target="_blank" className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5 text-zinc-300 hover:border-violet-500/40 hover:text-white transition-all">
+                        <span>Financial Disclaimer</span>
+                        <ExternalLink size={14} className="text-zinc-500" />
+                      </Link>
+                      <Link href="/contact" target="_blank" className="flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5 text-zinc-300 hover:border-violet-500/40 hover:text-white transition-all">
+                        <span>Help &amp; Support FAQ</span>
+                        <ExternalLink size={14} className="text-zinc-500" />
+                      </Link>
+                    </div>
                   </div>
 
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
