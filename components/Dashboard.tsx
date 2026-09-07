@@ -9,6 +9,7 @@ import {
   BarChart3,
   BedDouble,
   Car,
+  CheckCircle2,
   CircleDollarSign,
   CreditCard,
   Dumbbell,
@@ -720,6 +721,17 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
     monthsPaid: "0"
   });
 
+  const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  function showToast(message: string, type: "success" | "info" | "warning" = "success") {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null);
+    }, 3200);
+  }
+
   function addExpense() {
     const amount = Number(newExpense.amount);
     if (!newExpense.title || !amount) return;
@@ -736,6 +748,7 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
     trackEvent("expense_added", { category: newExpense.category, value: amount });
     setNewExpense({ title: "", category: "Food", amount: "", payment_method: "UPI", date: today, is_recurring: false });
     setShowExpense(false);
+    showToast("Transaction added successfully", "success");
   }
 
   function addEmi() {
@@ -772,6 +785,7 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
       monthsPaid: "0"
     });
     setShowEmiModal(false);
+    showToast("EMI record created successfully", "success");
   }
 
   function deleteExpense(id: string) {
@@ -809,11 +823,13 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
       setExpenses((prev) => prev.filter((e) => e.id !== id));
     }
     trackEvent("expense_deleted", { id });
+    showToast("Transaction deleted successfully", "info");
   }
 
   function deleteEmi(id: string) {
     setEmis((prev) => prev.filter((e) => e.id !== id));
     trackEvent("expense_deleted", { id, type: "emi" });
+    showToast("EMI record removed successfully", "info");
   }
 
   const nav = [
@@ -1942,6 +1958,21 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-900/95 px-5 py-3.5 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className={`grid h-7 w-7 place-items-center rounded-lg ${toast.type === "success" ? "bg-emerald-500/20 text-emerald-400" : "bg-violet-500/20 text-violet-400"}`}>
+            <CheckCircle2 size={16} />
+          </div>
+          <p className="text-sm font-medium text-zinc-200">{toast.message}</p>
+          <button 
+            onClick={() => setToast(null)} 
+            aria-label="Dismiss notification"
+            className="ml-2 text-zinc-500 hover:text-zinc-300"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
     </div>
