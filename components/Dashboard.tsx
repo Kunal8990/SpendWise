@@ -55,6 +55,7 @@ import { Expense, EMI } from "@/lib/types";
 import { BADGES } from "@/lib/achievements";
 import { createClient } from "@/lib/supabase/client";
 import DatePicker from "./DatePicker";
+import { trackEvent } from "@/lib/analytics";
 
 const categories = [
   "Food", "EMI", "Invest", "Personal Expense", "Outing", "Night Out",
@@ -731,6 +732,7 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
       is_recurring: newExpense.is_recurring
     };
     setExpenses((prev) => [newExp, ...prev]);
+    trackEvent("expense_added", { category: newExpense.category, value: amount });
     setNewExpense({ title: "", category: "Food", amount: "", payment_method: "UPI", date: today, is_recurring: false });
     setShowExpense(false);
   }
@@ -758,8 +760,16 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
       startDate: calculatedStartDate
     };
 
-    setEmis((prev) => [...prev, emiObj]);
-    setNewEmi({ title: "", principal: "", tenureMonths: "", monthlyAmount: "", deductionDate: "1", monthsPaid: "0" });
+    setEmis(prev => [...prev, emiObj]);
+    trackEvent("emi_added", { title: newEmi.title, value: monthlyAmount });
+    setNewEmi({
+      title: "",
+      principal: "",
+      tenureMonths: "",
+      monthlyAmount: "",
+      deductionDate: "1",
+      monthsPaid: "0"
+    });
     setShowEmiModal(false);
   }
 

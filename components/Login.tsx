@@ -22,6 +22,7 @@ import {
   EyeOff
 } from "lucide-react";
 import DatePicker from "./DatePicker";
+import { trackEvent } from "@/lib/analytics";
 
 export default function Login() {
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
@@ -30,6 +31,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [honeypot, setHoneypot] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -387,6 +389,12 @@ export default function Login() {
     setIsLoading(true);
     setMessage("");
 
+    // Spam bot protection check
+    if (honeypot) {
+      setIsLoading(false);
+      return;
+    }
+
     const cleanEmail = email.trim();
     const cleanUsername = username.trim();
     const cleanName = fullName.trim() || cleanUsername;
@@ -626,6 +634,7 @@ export default function Login() {
           ) as any;
 
           if (userRec?.profileCompleted) {
+            trackEvent("user_login", { username: activeUser });
             localStorage.setItem("spendwise_onboarding", JSON.stringify(userRec));
             window.location.href = "/dashboard";
           } else {
@@ -994,6 +1003,17 @@ export default function Login() {
           </div>
 
           <form onSubmit={(e) => { e.preventDefault(); handleAuth(); }} className="space-y-4">
+            {/* Honeypot Spam Trap */}
+            <div className="absolute opacity-0 -z-50 pointer-events-none h-0 w-0 overflow-hidden" aria-hidden="true">
+              <input
+                type="text"
+                name="website_url_trap"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+              />
+            </div>
             {mode === "signup" && (
               <label className="block">
                 <span className="mb-2 block text-sm text-zinc-400">Full Name</span>
@@ -1217,14 +1237,14 @@ export default function Login() {
             <button
               type="submit"
               disabled={isLoading || (mode === "signup" && (usernameStatus === "taken" || usernameStatus === "checking"))}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-3.5 font-bold text-white hover:bg-violet-400 disabled:opacity-50 transition-all shadow-lg shadow-violet-500/20"
-              aria-label={mode === "login" ? "Log in" : "Create account"}
+              className="relative flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-violet-600/30 hover:shadow-violet-600/50 hover:brightness-110 active:scale-[0.98] disabled:opacity-50 transition-all cursor-pointer"
+              aria-label={mode === "login" ? "Sign in to SpendWise" : "Create free account"}
             >
               {isLoading ? (
                 <Loader2 size={18} className="animate-spin" />
               ) : (
                 <>
-                  {mode === "login" ? "Log in" : "Create account"}
+                  <span>{mode === "login" ? "Sign In to SpendWise" : "Create Free Account"}</span>
                   <ArrowRight size={18} />
                 </>
               )}
