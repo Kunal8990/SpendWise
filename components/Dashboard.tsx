@@ -30,6 +30,7 @@ import {
   ShoppingBag,
   Sparkles,
   Target,
+  Trash2,
   TrendingUp,
   Utensils,
   Wallet,
@@ -773,6 +774,48 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
     setShowEmiModal(false);
   }
 
+  function deleteExpense(id: string) {
+    if (id === "onboarding-spend") {
+      if (onboardingData) {
+        const updated = { ...onboardingData, currentSpend: "0" };
+        setOnboardingData(updated);
+        const activeUser = activeUserRef.current;
+        localStorage.setItem('spendwise_onboarding', JSON.stringify(updated));
+        if (activeUser) {
+          const usersStr = localStorage.getItem('spendwise_users');
+          const users = usersStr ? JSON.parse(usersStr) : {};
+          if (users[activeUser]) {
+            users[activeUser].currentSpend = "0";
+            localStorage.setItem('spendwise_users', JSON.stringify(users));
+          }
+        }
+      }
+    } else if (id === "onboarding-invest") {
+      if (onboardingData) {
+        const updated = { ...onboardingData, monthlyInvestment: "0" };
+        setOnboardingData(updated);
+        const activeUser = activeUserRef.current;
+        localStorage.setItem('spendwise_onboarding', JSON.stringify(updated));
+        if (activeUser) {
+          const usersStr = localStorage.getItem('spendwise_users');
+          const users = usersStr ? JSON.parse(usersStr) : {};
+          if (users[activeUser]) {
+            users[activeUser].monthlyInvestment = "0";
+            localStorage.setItem('spendwise_users', JSON.stringify(users));
+          }
+        }
+      }
+    } else {
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
+    }
+    trackEvent("expense_deleted", { id });
+  }
+
+  function deleteEmi(id: string) {
+    setEmis((prev) => prev.filter((e) => e.id !== id));
+    trackEvent("expense_deleted", { id, type: "emi" });
+  }
+
   const nav = [
     ["Dashboard", LayoutDashboard],
     ["Transactions", ReceiptText],
@@ -1029,7 +1072,7 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                         allExpenses.slice(0, 6).map((e) => {
                           const Icon = iconForCategory[e.category] ?? CircleDollarSign;
                           return (
-                            <div key={e.id} className="flex items-center justify-between py-4">
+                            <div key={e.id} className="flex items-center justify-between py-4 group">
                               <div className="flex items-center gap-3">
                                 <div className="grid h-10 w-10 place-items-center rounded-xl bg-zinc-900 text-zinc-500"><Icon size={17}/></div>
                                 <div>
@@ -1040,7 +1083,17 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                                   <div className="mt-1 text-xs text-zinc-600">{e.category} • {e.payment_method} • {e.date}</div>
                                 </div>
                               </div>
-                              <div className="text-sm font-bold">{money(e.amount)}</div>
+                              <div className="flex items-center gap-3">
+                                <div className="text-sm font-bold">{money(e.amount)}</div>
+                                <button
+                                  onClick={() => deleteExpense(e.id)}
+                                  aria-label={`Delete ${e.title}`}
+                                  title="Delete transaction"
+                                  className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </div>
                           );
                         })
@@ -1119,7 +1172,7 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                       allExpenses.map((e) => {
                         const Icon = iconForCategory[e.category] ?? CircleDollarSign;
                         return (
-                          <div key={e.id} className="flex items-center justify-between py-4 hover:bg-zinc-900/50 -mx-4 px-4 rounded-xl transition-colors">
+                          <div key={e.id} className="flex items-center justify-between py-4 hover:bg-zinc-900/50 -mx-4 px-4 rounded-xl transition-colors group">
                             <div className="flex items-center gap-3">
                               <div className="grid h-10 w-10 place-items-center rounded-xl bg-zinc-900 text-zinc-500"><Icon size={17}/></div>
                               <div>
@@ -1130,7 +1183,17 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                                 <div className="mt-1 text-xs text-zinc-600">{e.category} • {e.payment_method} • {e.date}</div>
                               </div>
                             </div>
-                            <div className="text-sm font-bold">{money(e.amount)}</div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-sm font-bold">{money(e.amount)}</div>
+                              <button
+                                onClick={() => deleteExpense(e.id)}
+                                aria-label={`Delete ${e.title}`}
+                                title="Delete transaction"
+                                className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </div>
                         );
                       })
@@ -1261,7 +1324,7 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                       allExpenses.filter(e => e.category === 'Invest').map((e) => {
                         const Icon = iconForCategory[e.category] ?? CircleDollarSign;
                         return (
-                          <div key={e.id} className="flex items-center justify-between py-4 hover:bg-zinc-900/50 -mx-4 px-4 rounded-xl transition-colors">
+                          <div key={e.id} className="flex items-center justify-between py-4 hover:bg-zinc-900/50 -mx-4 px-4 rounded-xl transition-colors group">
                             <div className="flex items-center gap-3">
                               <div className="grid h-10 w-10 place-items-center rounded-xl bg-zinc-900 text-zinc-500"><Icon size={17}/></div>
                               <div>
@@ -1272,7 +1335,17 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                                 <div className="mt-1 text-xs text-zinc-600">{e.date} • {e.payment_method}</div>
                               </div>
                             </div>
-                            <div className="text-sm font-bold">{money(e.amount)}</div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-sm font-bold">{money(e.amount)}</div>
+                              <button
+                                onClick={() => deleteExpense(e.id)}
+                                aria-label={`Delete ${e.title}`}
+                                title="Delete investment"
+                                className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </div>
                         );
                       })
@@ -1313,10 +1386,20 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                       const interestPaid = paidMonths * interestPerMonth;
 
                       return (
-                        <div key={emi.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+                        <div key={emi.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 group">
                           <div className="flex items-center justify-between">
                             <h3 className="font-bold">{emi.title}</h3>
-                            <div className="grid h-8 w-8 place-items-center rounded-lg bg-red-500/10 text-red-400"><CreditCard size={15}/></div>
+                            <div className="flex items-center gap-2">
+                              <div className="grid h-8 w-8 place-items-center rounded-lg bg-red-500/10 text-red-400"><CreditCard size={15}/></div>
+                              <button
+                                onClick={() => deleteEmi(emi.id)}
+                                aria-label={`Delete EMI ${emi.title}`}
+                                title="Delete EMI"
+                                className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
                           </div>
                           <div className="mt-4 text-2xl font-black">{money(emi.monthlyAmount)}<span className="text-xs font-normal text-zinc-500"> /mo</span></div>
                           
