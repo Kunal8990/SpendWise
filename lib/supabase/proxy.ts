@@ -1,6 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const DEFAULT_SUPABASE_URL = "https://aqclqqphhxvloinkgfgz.supabase.co";
+const DEFAULT_SUPABASE_KEY = "sb_publishable_AOIff5SRRiBBvD5ieSnLKw_qAsVmINl";
+
 export async function updateSession(request: NextRequest) {
   const isProduction = process.env.NODE_ENV === "production";
   const proto = request.headers.get("x-forwarded-proto");
@@ -23,12 +26,8 @@ export async function updateSession(request: NextRequest) {
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   response.headers.set("X-XSS-Protection", "1; mode=block");
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return response;
-  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY;
 
   try {
     const supabase = createServerClient(
