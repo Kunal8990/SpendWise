@@ -28,7 +28,7 @@ export function sendPasswordResetEmail({
   email,
   name,
   resetToken,
-  baseUrl = "https://spendwise.app"
+  baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://spendwise.kunaljha8990.workers.dev"
 }: {
   email: string;
   name: string;

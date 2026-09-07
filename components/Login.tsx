@@ -301,8 +301,11 @@ export default function Login() {
       if (existsLocally || existsInDb) {
         try {
           const supabase = createClient();
+          const origin = typeof window !== "undefined" && window.location.origin && !window.location.origin.includes("localhost")
+            ? window.location.origin
+            : (process.env.NEXT_PUBLIC_APP_URL || "https://spendwise.kunaljha8990.workers.dev");
           await supabase.auth.resetPasswordForEmail(cleanEmail, {
-            redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`
+            redirectTo: `${origin}/auth/callback?next=/dashboard`
           });
         } catch (e) {}
       }
@@ -520,10 +523,15 @@ export default function Login() {
       // Try creating account in Supabase
       const supabase = createClient();
       try {
+        const origin = typeof window !== "undefined" && window.location.origin && !window.location.origin.includes("localhost")
+          ? window.location.origin
+          : (process.env.NEXT_PUBLIC_APP_URL || "https://spendwise.kunaljha8990.workers.dev");
+
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: cleanEmail,
           password: password,
           options: {
+            emailRedirectTo: `${origin}/auth/callback?next=/dashboard`,
             data: {
               username: cleanUsername,
               full_name: cleanName
