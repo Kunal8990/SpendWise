@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import CookieConsent from "@/components/CookieConsent";
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://spendwise.pages.dev";
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://spendwise.kunaljha8990.workers.dev";
 
 export const viewport: Viewport = {
   themeColor: "#08070b",
