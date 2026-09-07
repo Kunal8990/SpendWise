@@ -229,7 +229,10 @@ export default function Login() {
     setMessage("");
     try {
       const supabase = createClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+      const origin = typeof window !== "undefined" && window.location.origin && !window.location.origin.includes("localhost")
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_APP_URL || "https://spendwise.kunaljha8990.workers.dev");
+      const redirectTo = `${origin}/auth/callback?next=/dashboard`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
