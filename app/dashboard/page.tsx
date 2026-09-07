@@ -1,10 +1,17 @@
-import { redirect } from "next/navigation";
 import Dashboard from "@/components/Dashboard";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  let userEmail: string | undefined = undefined;
 
-  return <Dashboard userEmail={user?.email ?? undefined} />;
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    userEmail = data?.user?.email ?? undefined;
+  } catch (err) {
+    // If Supabase is unreachable or unconfigured, fall back gracefully
+  }
+
+  return <Dashboard userEmail={userEmail} />;
 }
+
