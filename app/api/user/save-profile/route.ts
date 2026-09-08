@@ -22,14 +22,30 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    // If authenticated with Supabase, persist into user_profiles
-    if (user) {
+    let targetUserId = user?.id;
+
+    if (!targetUserId && (username || email)) {
+      // Look up user_id from public.users or public.user_profiles
+      const { data: foundUser } = await supabase
+        .from("users")
+        .select("id")
+        .or(`email.ilike.${email || ''},username.ilike.${username || ''}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (foundUser?.id) {
+        targetUserId = foundUser.id;
+      }
+    }
+
+    // Persist into user_profiles
+    if (targetUserId) {
       const profileData: Record<string, any> = {
-        id: user.id,
+        user_id: targetUserId,
         updated_at: new Date().toISOString()
       };
 
-      if (email || user.email) profileData.email = email || user.email;
+      if (email || user?.email) profileData.email = email || user?.email;
       if (username) profileData.username = username;
       if (name) profileData.name = name;
       if (age) profileData.age = Number(age);
@@ -52,7 +68,7 @@ export async function POST(request: Request) {
       if (currentSpend) profileData.current_spend = Number(currentSpend);
       if (monthlyInvestment) profileData.monthly_investment = Number(monthlyInvestment);
 
-      await supabase.from("user_profiles").upsert(profileData);
+      await supabase.from("user_profiles").upsert(profileData, { onConflict: "user_id" });
     }
 
     return NextResponse.json({ success: true });

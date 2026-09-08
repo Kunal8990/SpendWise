@@ -127,7 +127,7 @@ function MetricCard({
 
 export default function Dashboard({ userEmail, userName }: { userEmail?: string; userName?: string }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [expenses, setExpenses] = useState<Expense[]>(demoExpenses);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [showExpense, setShowExpense] = useState(false);
   const [showEmiModal, setShowEmiModal] = useState(false);
   const [active, setActive] = useState("Dashboard");
@@ -200,16 +200,15 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
     } else if (parsedOnboarding && onboardingBelongsToActiveUser) {
       activeProfile = parsedOnboarding;
     } else if (activeUser || userEmail || userName) {
-      // Auto-generate profile for authenticated OAuth / Supabase user
       const defaultName = userName || activeUser || "User";
       const defaultEmail = userEmail || (activeUser?.includes('@') ? activeUser : `${activeUser}@spendwise.local`);
       activeProfile = {
         name: defaultName,
         email: defaultEmail,
         username: activeUser || defaultName,
-        age: "28",
+        age: "",
         userType: "Professional",
-        income: "75000",
+        income: "0",
         goal: "track",
         currentSpend: "0",
         monthlyInvestment: "0",
@@ -231,9 +230,9 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
               name: fallbackName,
               email: user.email || `${fallbackName}@spendwise.local`,
               username: fallbackName,
-              age: "28",
+              age: "",
               userType: "Professional",
-              income: "75000",
+              income: "0",
               goal: "track",
               currentSpend: "0",
               monthlyInvestment: "0",
@@ -407,8 +406,11 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
   });
 
   const allExpenses = useMemo(() => {
-    // Hide demo data if the user has actually onboarded
-    const base = onboardingData ? expenses.filter(e => !demoExpenses.some(d => d.id === e.id)) : [...expenses];
+    // If active user exists or onboarding data is present, strictly filter out demo data
+    const hasActiveUser = !!(activeUserRef.current || onboardingData);
+    const base = hasActiveUser
+      ? expenses.filter(e => !demoExpenses.some(d => d.id === e.id))
+      : [...expenses];
     
     if (onboardingData?.currentSpend && Number(onboardingData.currentSpend) > 0) {
       if (!base.some(e => e.id === "onboarding-spend")) {
@@ -435,8 +437,13 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
         });
       }
     }
-    
-    return base;
+
+    // Reorder transactions date-wise: latest expenses on top, older at bottom
+    return base.sort((a, b) => {
+      const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return b.date.localeCompare(a.date);
+    });
   }, [expenses, onboardingData, currentMonth]);
 
   const dynamicMonthlyTrend = useMemo(() => {
@@ -452,7 +459,7 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
       monthMap[currentMonth] = { spent: 0 };
     }
 
-    const income = Number(onboardingData?.income || 60000);
+    const income = Number(onboardingData?.income || 0);
     const inv = Number(onboardingData?.monthlyInvestment || 0);
 
     return Object.entries(monthMap)
@@ -495,8 +502,8 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
     .filter((e) => e.date.startsWith(currentMonth))
     .reduce((sum, e) => sum + e.amount, 0), [allExpenses, currentMonth]);
 
-  const monthlyIncome = onboardingData?.income ? Number(onboardingData.income) : 60000;
-  const investment = onboardingData?.monthlyInvestment ? Number(onboardingData.monthlyInvestment) : 7000;
+  const monthlyIncome = onboardingData?.income ? Number(onboardingData.income) : 0;
+  const investment = onboardingData?.monthlyInvestment ? Number(onboardingData.monthlyInvestment) : 0;
   const saved = monthlyIncome - totalSpent - investment;
   const savingsRate = monthlyIncome > 0 ? ((saved / monthlyIncome) * 100).toFixed(1) : "0";
 
@@ -715,11 +722,55 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
   const [newEmi, setNewEmi] = useState({
     title: "",
     principal: "",
-    tenureMonths: "",
+    interestRate: "10.5",
+    tenureMonths: "12",
     monthlyAmount: "",
-    deductionDate: "1",
-    monthsPaid: "0"
+    deductionDate: "5",
+    monthsPaid: "0",
+    isCustomEmi: false
   });
+
+  // Helper function to calculate EMI, Total Interest, and Total Payable
+  function computeEmiDetails(
+    principalStr: string,
+    rateStr: string,
+    tenureStr: string,
+    customMonthlyStr: string,
+    isCustom: boolean
+  ) {
+    const P = Math.max(0, Number(principalStr) || 0);
+    const N = Math.max(1, Number(tenureStr) || 1);
+    const R = Math.max(0, Number(rateStr) || 0);
+
+    if (P <= 0 || N <= 0) {
+      return { monthlyEmi: 0, totalInterest: 0, totalPayable: 0, effectiveRate: R };
+    }
+
+    if (isCustom && Number(customMonthlyStr) > 0) {
+      const customMonthly = Math.round(Number(customMonthlyStr));
+      const totalPayable = customMonthly * N;
+      const totalInterest = Math.max(0, totalPayable - P);
+      const effectiveRate = P > 0 && N > 0 ? ((totalInterest / P) / (N / 12)) * 100 : 0;
+      return {
+        monthlyEmi: customMonthly,
+        totalInterest,
+        totalPayable,
+        effectiveRate: Number(effectiveRate.toFixed(1))
+      };
+    }
+
+    if (R <= 0) {
+      const monthlyEmi = Math.round(P / N);
+      return { monthlyEmi, totalInterest: 0, totalPayable: P, effectiveRate: 0 };
+    }
+
+    const r = R / (12 * 100);
+    const factor = Math.pow(1 + r, N);
+    const monthlyEmi = Math.round((P * r * factor) / (factor - 1));
+    const totalPayable = monthlyEmi * N;
+    const totalInterest = Math.max(0, totalPayable - P);
+    return { monthlyEmi, totalInterest, totalPayable, effectiveRate: R };
+  }
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -754,35 +805,50 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
   function addEmi() {
     const principal = Number(newEmi.principal);
     const tenureMonths = Number(newEmi.tenureMonths);
-    const monthlyAmount = Number(newEmi.monthlyAmount);
-    const deductionDate = Number(newEmi.deductionDate);
-    const monthsPaid = Number(newEmi.monthsPaid);
+    const deductionDate = Number(newEmi.deductionDate) || 1;
+    const monthsPaid = Number(newEmi.monthsPaid) || 0;
 
-    if (!newEmi.title || !principal || !tenureMonths || !monthlyAmount || !deductionDate) return;
-    
+    if (!newEmi.title || !principal || !tenureMonths) return;
+
+    const calc = computeEmiDetails(
+      newEmi.principal,
+      newEmi.interestRate,
+      newEmi.tenureMonths,
+      newEmi.monthlyAmount,
+      newEmi.isCustomEmi
+    );
+
+    const monthlyAmount = calc.monthlyEmi;
+    if (monthlyAmount <= 0) return;
+
     const d = new Date();
     d.setMonth(d.getMonth() - monthsPaid);
     const calculatedStartDate = d.toISOString().slice(0, 10);
 
     const emiObj: EMI = {
       id: crypto.randomUUID(),
-      title: newEmi.title,
+      title: newEmi.title.trim(),
       principal,
       tenureMonths,
       monthlyAmount,
       deductionDate,
-      startDate: calculatedStartDate
+      startDate: calculatedStartDate,
+      interestRate: calc.effectiveRate,
+      totalInterest: calc.totalInterest,
+      totalPayable: calc.totalPayable
     };
 
-    setEmis(prev => [...prev, emiObj]);
+    setEmis((prev) => [...prev, emiObj]);
     trackEvent("emi_added", { title: newEmi.title, value: monthlyAmount });
     setNewEmi({
       title: "",
       principal: "",
-      tenureMonths: "",
+      interestRate: "10.5",
+      tenureMonths: "12",
       monthlyAmount: "",
-      deductionDate: "1",
-      monthsPaid: "0"
+      deductionDate: "5",
+      monthsPaid: "0",
+      isCustomEmi: false
     });
     setShowEmiModal(false);
     showToast("EMI record created successfully", "success");
@@ -1373,18 +1439,54 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
               <section className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-black">Active EMIs</h2>
-                    <p className="mt-1 text-sm text-zinc-500">Track and auto-deduct your monthly loans and EMIs</p>
+                    <h2 className="text-2xl font-black">Active EMIs & Loans</h2>
+                    <p className="mt-1 text-sm text-zinc-500">Track monthly EMIs, interest breakdowns, and auto-deductions</p>
                   </div>
-                  <button onClick={() => setShowEmiModal(true)} className="flex items-center gap-2 rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-400">
+                  <button onClick={() => setShowEmiModal(true)} className="flex items-center gap-2 rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-400 shadow-lg shadow-violet-500/20">
                     <Plus size={17}/> Add EMI
                   </button>
                 </div>
 
+                {/* Top Summary Metrics for EMIs */}
+                {(() => {
+                  const totalMonthlyOutflow = emis.reduce((sum, e) => sum + e.monthlyAmount, 0);
+                  const totalPrincipalSum = emis.reduce((sum, e) => sum + e.principal, 0);
+                  const totalInterestSum = emis.reduce((sum, e) => {
+                    const totalInt = e.totalInterest !== undefined ? e.totalInterest : Math.max(0, (e.tenureMonths * e.monthlyAmount) - e.principal);
+                    return sum + totalInt;
+                  }, 0);
+                  const totalRemainingSum = emis.reduce((sum, e) => {
+                    const start = new Date(e.startDate);
+                    const now = new Date();
+                    let monthsPassed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+                    if (now.getDate() < e.deductionDate) {
+                      monthsPassed = Math.max(0, monthsPassed - 1);
+                    }
+                    const paidMonths = Math.max(0, Math.min(e.tenureMonths, monthsPassed));
+                    const remainingMonths = Math.max(0, e.tenureMonths - paidMonths);
+                    const remPrincipal = Math.max(0, Math.round(e.principal * (remainingMonths / e.tenureMonths)));
+                    return sum + remPrincipal;
+                  }, 0);
+
+                  return (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <MetricCard label="Monthly EMI Outflow" value={money(totalMonthlyOutflow)} icon={CreditCard} delta={`${emis.length} active loans`} deltaType="neutral"/>
+                      <MetricCard label="Total Principal" value={money(totalPrincipalSum)} icon={Wallet} delta="Original borrowed" deltaType="neutral"/>
+                      <MetricCard label="Total Interest" value={money(totalInterestSum)} icon={TrendingUp} delta="Cost of loans" deltaType={totalInterestSum > 0 ? "negative" : "neutral"}/>
+                      <MetricCard label="Outstanding Balance" value={money(totalRemainingSum)} icon={ReceiptText} delta="Principal left" deltaType="neutral"/>
+                    </div>
+                  );
+                })()}
+
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {emis.length === 0 ? (
-                    <div className="col-span-full rounded-2xl border border-zinc-800 bg-zinc-950 p-8 text-center text-zinc-500">
-                      You don't have any active EMIs.
+                    <div className="col-span-full rounded-2xl border border-zinc-800 bg-zinc-950 p-12 text-center text-zinc-500">
+                      <CreditCard size={36} className="mx-auto mb-3 text-zinc-600 opacity-60" />
+                      <div className="text-base font-semibold text-zinc-400">No Active EMIs</div>
+                      <p className="mt-1 text-sm text-zinc-600">Add an EMI or loan to track monthly auto-deductions and interest amounts.</p>
+                      <button onClick={() => setShowEmiModal(true)} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-violet-500/10 border border-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-300 hover:bg-violet-500/20">
+                        <Plus size={15}/> Add Your First EMI
+                      </button>
                     </div>
                   ) : (
                     emis.map((emi) => {
@@ -1395,18 +1497,28 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                         monthsPassed = Math.max(0, monthsPassed - 1);
                       }
                       const paidMonths = Math.max(0, Math.min(emi.tenureMonths, monthsPassed));
+                      const remainingMonths = Math.max(0, emi.tenureMonths - paidMonths);
                       const pct = Math.min(100, (paidMonths / emi.tenureMonths) * 100);
 
-                      const totalInterest = Math.max(0, (emi.tenureMonths * emi.monthlyAmount) - emi.principal);
-                      const interestPerMonth = totalInterest / emi.tenureMonths;
+                      const totalInterest = emi.totalInterest !== undefined ? emi.totalInterest : Math.max(0, (emi.tenureMonths * emi.monthlyAmount) - emi.principal);
+                      const totalPayable = emi.totalPayable !== undefined ? emi.totalPayable : (emi.principal + totalInterest);
+                      const interestPerMonth = emi.tenureMonths > 0 ? (totalInterest / emi.tenureMonths) : 0;
                       const interestPaid = paidMonths * interestPerMonth;
+                      const remainingBalance = Math.max(0, Math.round(emi.principal * (remainingMonths / (emi.tenureMonths || 1))));
 
                       return (
-                        <div key={emi.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 group">
+                        <div key={emi.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 group transition-all hover:border-violet-500/30">
                           <div className="flex items-center justify-between">
-                            <h3 className="font-bold">{emi.title}</h3>
+                            <div>
+                              <h3 className="font-bold text-zinc-100">{emi.title}</h3>
+                              {emi.interestRate !== undefined && (
+                                <span className="inline-block mt-0.5 text-xs text-violet-400 font-medium">
+                                  {emi.interestRate > 0 ? `${emi.interestRate}% p.a. interest` : "0% No-Cost EMI"}
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2">
-                              <div className="grid h-8 w-8 place-items-center rounded-lg bg-red-500/10 text-red-400"><CreditCard size={15}/></div>
+                              <div className="grid h-8 w-8 place-items-center rounded-lg bg-violet-500/10 text-violet-400"><CreditCard size={15}/></div>
                               <button
                                 onClick={() => deleteEmi(emi.id)}
                                 aria-label={`Delete EMI ${emi.title}`}
@@ -1417,18 +1529,32 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
                               </button>
                             </div>
                           </div>
-                          <div className="mt-4 text-2xl font-black">{money(emi.monthlyAmount)}<span className="text-xs font-normal text-zinc-500"> /mo</span></div>
                           
-                          <div className="mt-5 mb-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900">
-                            <div className="h-full rounded-full bg-violet-500" style={{ width: `${pct}%` }} />
+                          <div className="mt-4 text-2xl font-black text-white">
+                            {money(emi.monthlyAmount)}
+                            <span className="text-xs font-normal text-zinc-500"> /mo</span>
                           </div>
-                          <div className="text-xs text-zinc-500 mb-4">{paidMonths} of {emi.tenureMonths} months paid</div>
+                          
+                          <div className="mt-4 mb-2 h-2 w-full overflow-hidden rounded-full bg-zinc-900">
+                            <div className="h-full rounded-full bg-gradient-to-r from-violet-600 to-violet-400 transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <div className="flex justify-between text-xs text-zinc-500 mb-4">
+                            <span>{paidMonths} of {emi.tenureMonths} paid ({pct.toFixed(0)}%)</span>
+                            <span>{remainingMonths} months left</span>
+                          </div>
 
-                          <div className="space-y-2 text-sm text-zinc-400">
-                            <div className="flex justify-between"><span>Product Amount</span><span className="text-white">{money(emi.principal)}</span></div>
-                            <div className="flex justify-between"><span>Interest Paid</span><span className="text-red-400 font-semibold">{money(interestPaid)}</span></div>
-                            <div className="flex justify-between"><span>Total Paid</span><span className="text-emerald-400 font-semibold">{money(paidMonths * emi.monthlyAmount)}</span></div>
-                            <div className="flex justify-between"><span>Auto-deduct</span><span className="text-violet-300">Day {emi.deductionDate}</span></div>
+                          <div className="space-y-2 text-xs text-zinc-400 divide-y divide-zinc-900">
+                            <div className="flex justify-between pt-1.5"><span>Product Principal</span><span className="text-zinc-200 font-medium">{money(emi.principal)}</span></div>
+                            <div className="flex justify-between pt-1.5"><span>Total Interest</span><span className="text-rose-400 font-medium">{money(totalInterest)}</span></div>
+                            <div className="flex justify-between pt-1.5"><span>Interest Paid So Far</span><span className="text-amber-400 font-medium">{money(interestPaid)}</span></div>
+                            <div className="flex justify-between pt-1.5"><span>Total Payable</span><span className="text-zinc-200 font-medium">{money(totalPayable)}</span></div>
+                            <div className="flex justify-between pt-1.5"><span>Outstanding Balance</span><span className="text-emerald-400 font-semibold">{money(remainingBalance)}</span></div>
+                            <div className="flex justify-between pt-1.5 items-center">
+                              <span>Auto-deduct</span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-300 font-medium border border-violet-500/20 text-[11px]">
+                                Day {emi.deductionDate} of month
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );
@@ -1821,49 +1947,190 @@ export default function Dashboard({ userEmail, userName }: { userEmail?: string;
               <button onClick={() => setShowEmiModal(false)} className="text-zinc-500 hover:text-white"><X/></button>
             </div>
 
-            <div className="mt-6 grid gap-4">
-              <label className="text-sm">
-                <span className="mb-2 block text-zinc-500">Loan/EMI Name</span>
-                <input className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none focus:border-violet-500" value={newEmi.title} onChange={(e) => setNewEmi({ ...newEmi, title: e.target.value })} placeholder="Car Loan"/>
-              </label>
+            {(() => {
+              const liveCalc = computeEmiDetails(
+                newEmi.principal,
+                newEmi.interestRate,
+                newEmi.tenureMonths,
+                newEmi.monthlyAmount,
+                newEmi.isCustomEmi
+              );
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm">
-                  <span className="mb-2 block text-zinc-500">Product Amount (Principal)</span>
-                  <input type="number" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none focus:border-violet-500" value={newEmi.principal} onChange={(e) => setNewEmi({ ...newEmi, principal: e.target.value })} placeholder="500000"/>
-                </label>
-                <label className="text-sm">
-                  <span className="mb-2 block text-zinc-500">Monthly EMI Amount</span>
-                  <input type="number" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none focus:border-violet-500" value={newEmi.monthlyAmount} onChange={(e) => setNewEmi({ ...newEmi, monthlyAmount: e.target.value })} placeholder="12500"/>
-                </label>
-              </div>
+              return (
+                <div className="mt-6 grid gap-4">
+                  <label className="text-sm">
+                    <span className="mb-2 block text-zinc-400">Loan / EMI Name</span>
+                    <input
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none text-zinc-100 placeholder-zinc-500 focus:border-violet-500"
+                      value={newEmi.title}
+                      onChange={(e) => setNewEmi({ ...newEmi, title: e.target.value })}
+                      placeholder="e.g. MacBook Pro EMI, Car Loan"
+                    />
+                  </label>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm">
-                  <span className="mb-2 block text-zinc-500">Time Period (Months)</span>
-                  <input type="number" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none focus:border-violet-500" value={newEmi.tenureMonths} onChange={(e) => setNewEmi({ ...newEmi, tenureMonths: e.target.value })} placeholder="48"/>
-                </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <span className="mb-2 block text-zinc-400">Product Principal (₹)</span>
+                      <input
+                        type="number"
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none text-zinc-100 placeholder-zinc-500 focus:border-violet-500"
+                        value={newEmi.principal}
+                        onChange={(e) => setNewEmi({ ...newEmi, principal: e.target.value })}
+                        placeholder="100000"
+                      />
+                    </label>
 
-                <label className="text-sm">
-                  <span className="mb-2 block text-zinc-500">Months Paid So Far</span>
-                  <input type="number" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none focus:border-violet-500" value={newEmi.monthsPaid} onChange={(e) => setNewEmi({ ...newEmi, monthsPaid: e.target.value })} placeholder="0"/>
-                </label>
-              </div>
+                    <label className="text-sm">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-zinc-400">Interest Rate (% p.a.)</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewEmi({ ...newEmi, interestRate: "0" })}
+                          className="text-[11px] text-violet-400 hover:text-violet-300 font-medium"
+                        >
+                          0% No-Cost
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.1"
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none text-zinc-100 placeholder-zinc-500 focus:border-violet-500"
+                        value={newEmi.interestRate}
+                        onChange={(e) => setNewEmi({ ...newEmi, interestRate: e.target.value, isCustomEmi: false })}
+                        placeholder="10.5"
+                      />
+                    </label>
+                  </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm">
-                  <span className="mb-2 block text-zinc-500">Deduction Date (1-31)</span>
-                  <input type="number" min="1" max="31" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none focus:border-violet-500" value={newEmi.deductionDate} onChange={(e) => setNewEmi({ ...newEmi, deductionDate: e.target.value })} placeholder="5"/>
-                </label>
-              </div>
+                  {/* Common Interest Rate Presets */}
+                  <div className="flex flex-wrap gap-1.5 -mt-1">
+                    {[
+                      { label: "0% No-Cost", rate: "0" },
+                      { label: "8.5% Home", rate: "8.5" },
+                      { label: "10.5% Personal", rate: "10.5" },
+                      { label: "13.5% Auto", rate: "13.5" },
+                      { label: "16% Credit Card", rate: "16" }
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setNewEmi({ ...newEmi, interestRate: preset.rate, isCustomEmi: false })}
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
+                          newEmi.interestRate === preset.rate && !newEmi.isCustomEmi
+                            ? "border-violet-500 bg-violet-500/20 text-violet-300 font-semibold"
+                            : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
 
-              <div className="mt-4 rounded-xl border border-violet-500/15 bg-violet-500/5 p-4 text-sm text-zinc-400 leading-relaxed">
-                <strong className="text-violet-300">Auto-deduction active:</strong> On the <strong className="text-white">{newEmi.deductionDate}</strong> of every month, {newEmi.monthlyAmount ? <strong className="text-white">₹{newEmi.monthlyAmount}</strong> : "this amount"} will be automatically added to your expenses.
-              </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <span className="mb-2 block text-zinc-400">Time Period (Months)</span>
+                      <input
+                        type="number"
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none text-zinc-100 placeholder-zinc-500 focus:border-violet-500"
+                        value={newEmi.tenureMonths}
+                        onChange={(e) => setNewEmi({ ...newEmi, tenureMonths: e.target.value })}
+                        placeholder="12"
+                      />
+                    </label>
 
-              <button 
-                onClick={addEmi} className="mt-2 rounded-xl bg-violet-500 px-4 py-3.5 font-bold text-white hover:bg-violet-400">Save EMI</button>
-            </div>
+                    <label className="text-sm">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-zinc-400">Monthly EMI (₹)</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewEmi({ ...newEmi, isCustomEmi: !newEmi.isCustomEmi, monthlyAmount: String(liveCalc.monthlyEmi) })}
+                          className="text-[11px] text-violet-400 hover:text-violet-300 font-medium"
+                        >
+                          {newEmi.isCustomEmi ? "Auto Calculate" : "Edit Manually"}
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        readOnly={!newEmi.isCustomEmi}
+                        className={`w-full rounded-xl border px-4 py-3 outline-none text-zinc-100 placeholder-zinc-500 transition-all ${
+                          newEmi.isCustomEmi
+                            ? "border-violet-500 bg-zinc-950 focus:border-violet-400"
+                            : "border-zinc-800/80 bg-zinc-900/60 text-violet-300 font-semibold cursor-default"
+                        }`}
+                        value={newEmi.isCustomEmi ? newEmi.monthlyAmount : (liveCalc.monthlyEmi > 0 ? liveCalc.monthlyEmi : "")}
+                        onChange={(e) => setNewEmi({ ...newEmi, monthlyAmount: e.target.value, isCustomEmi: true })}
+                        placeholder={String(liveCalc.monthlyEmi || "e.g. 8815")}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <span className="mb-2 block text-zinc-400">Months Paid So Far</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={newEmi.tenureMonths || "120"}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none text-zinc-100 placeholder-zinc-500 focus:border-violet-500"
+                        value={newEmi.monthsPaid}
+                        onChange={(e) => setNewEmi({ ...newEmi, monthsPaid: e.target.value })}
+                        placeholder="0"
+                      />
+                    </label>
+
+                    <label className="text-sm">
+                      <span className="mb-2 block text-zinc-400">Deduction Day (1-31)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 outline-none text-zinc-100 placeholder-zinc-500 focus:border-violet-500"
+                        value={newEmi.deductionDate}
+                        onChange={(e) => setNewEmi({ ...newEmi, deductionDate: e.target.value })}
+                        placeholder="5"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Live Calculation Breakdown Widget */}
+                  {Number(newEmi.principal) > 0 && Number(newEmi.tenureMonths) > 0 && (
+                    <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/10 via-zinc-900/80 to-zinc-950 p-4 space-y-2.5">
+                      <div className="text-xs uppercase tracking-wider font-bold text-violet-400 flex items-center justify-between">
+                        <span>Loan Breakdown Preview</span>
+                        <span className="text-[11px] font-normal text-zinc-400">
+                          {liveCalc.effectiveRate > 0 ? `${liveCalc.effectiveRate}% p.a.` : "0% No-Cost"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                        <div className="rounded-xl bg-zinc-950/60 p-2.5 border border-zinc-800/60">
+                          <div className="text-[11px] text-zinc-500">Monthly EMI</div>
+                          <div className="mt-1 text-sm font-black text-white">{money(liveCalc.monthlyEmi)}</div>
+                        </div>
+                        <div className="rounded-xl bg-zinc-950/60 p-2.5 border border-zinc-800/60">
+                          <div className="text-[11px] text-zinc-500">Total Interest</div>
+                          <div className="mt-1 text-sm font-black text-rose-400">{money(liveCalc.totalInterest)}</div>
+                        </div>
+                        <div className="rounded-xl bg-zinc-950/60 p-2.5 border border-zinc-800/60">
+                          <div className="text-[11px] text-zinc-500">Total Payable</div>
+                          <div className="mt-1 text-sm font-black text-emerald-400">{money(liveCalc.totalPayable)}</div>
+                        </div>
+                      </div>
+                      <div className="text-xs text-zinc-400 pt-1">
+                        Auto-deducts <strong className="text-white">{money(liveCalc.monthlyEmi)}</strong> on day <strong className="text-violet-300">{newEmi.deductionDate || 1}</strong> of each month.
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={addEmi}
+                    disabled={!newEmi.title || !Number(newEmi.principal) || liveCalc.monthlyEmi <= 0}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-3.5 font-bold text-white hover:bg-violet-400 disabled:opacity-50 transition-all shadow-lg shadow-violet-500/20"
+                  >
+                    Save EMI Record
+                  </button>
+                </div>
+              );
+            })()}
             </div>
           </div>
         </div>

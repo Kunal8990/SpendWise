@@ -48,15 +48,25 @@ export async function GET(request: Request) {
       return NextResponse.json({ exists: rpcExists });
     }
 
-    // 2. Query user_profiles table as fallback
+    // 2. Query user_profiles and users tables as fallback
     const { data: profiles, error: queryErr } = await supabase
       .from("user_profiles")
-      .select("id")
+      .select("user_id, email")
       .ilike("email", email)
       .limit(1);
 
     if (!queryErr && profiles && profiles.length > 0) {
-      return NextResponse.json({ exists: true });
+      return NextResponse.json({ exists: true, message: "Email is already has been used please enter a new email" });
+    }
+
+    const { data: users, error: usersErr } = await supabase
+      .from("users")
+      .select("id, email")
+      .ilike("email", email)
+      .limit(1);
+
+    if (!usersErr && users && users.length > 0) {
+      return NextResponse.json({ exists: true, message: "Email is already has been used please enter a new email" });
     }
 
     return NextResponse.json({ exists: false });

@@ -62,15 +62,27 @@ export async function GET(request: Request) {
     // 2. Fallback query
     const { data: profiles, error: queryError } = await supabase
       .from("user_profiles")
-      .select("id")
+      .select("user_id, username")
       .ilike("username", username)
       .limit(1);
 
-    if (!queryError && profiles) {
-      const isTaken = profiles.length > 0;
+    if (!queryError && profiles && profiles.length > 0) {
       return NextResponse.json({
-        available: !isTaken,
-        message: isTaken ? "Username is already taken." : "Username is available."
+        available: false,
+        message: "Username is already taken. Please choose another."
+      });
+    }
+
+    const { data: users, error: usersError } = await supabase
+      .from("users")
+      .select("id, username")
+      .ilike("username", username)
+      .limit(1);
+
+    if (!usersError && users && users.length > 0) {
+      return NextResponse.json({
+        available: false,
+        message: "Username is already taken. Please choose another."
       });
     }
 

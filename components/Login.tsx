@@ -41,9 +41,11 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGuestLoading, setIsGuestLoading] = useState(false);
   
-  // Real-time username availability state for signup
+  // Real-time username & email availability state for signup
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken" | "invalid">("idle");
   const [usernameFeedback, setUsernameFeedback] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "checking" | "taken" | "available" | "invalid">("idle");
+  const [emailFeedback, setEmailFeedback] = useState("");
 
   const [step, setStep] = useState<"auth" | "onboarding_1" | "onboarding_2">("auth");
   const [details, setDetails] = useState({ 
@@ -111,9 +113,7 @@ export default function Login() {
       const lowerTarget = targetUsername.trim().toLowerCase();
 
       return Object.entries(users).some(([key, val]: [string, any]) => {
-        // Direct key check
         if (key.trim().toLowerCase() === lowerTarget) return true;
-        // Inner property check
         if (val && typeof val === "object") {
           if (typeof val.username === "string" && val.username.trim().toLowerCase() === lowerTarget) {
             return true;
@@ -125,6 +125,97 @@ export default function Login() {
       return false;
     }
   }
+
+  // Helper to reliably check if an email is already taken in localStorage
+  function checkLocalEmailTaken(targetEmail: string): boolean {
+    try {
+      const usersStr = localStorage.getItem("spendwise_users");
+      if (!usersStr) return false;
+      const users = JSON.parse(usersStr);
+      if (!users || typeof users !== "object") return false;
+
+      const lowerTarget = targetEmail.trim().toLowerCase();
+
+      return Object.values(users).some((val: any) => {
+        if (val && typeof val === "object") {
+          if (typeof val.email === "string" && val.email.trim().toLowerCase() === lowerTarget) {
+            return true;
+          }
+        }
+        return false;
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Live debounced email availability check for signup
+  useEffect(() => {
+    if (mode !== "signup") {
+      setEmailStatus("idle");
+      setEmailFeedback("");
+      return;
+    }
+
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) {
+      setEmailStatus("idle");
+      setEmailFeedback("");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmed)) {
+      setEmailStatus("invalid");
+      setEmailFeedback("Please enter a valid email address.");
+      return;
+    }
+
+    // Check localStorage immediately
+    if (checkLocalEmailTaken(trimmed)) {
+      setEmailStatus("taken");
+      setEmailFeedback("Email is already has been used please enter a new email");
+      return;
+    }
+
+    setEmailStatus("checking");
+    setEmailFeedback("Checking email availability...");
+
+    let isCurrent = true;
+    const timer = setTimeout(async () => {
+      try {
+        if (checkLocalEmailTaken(trimmed)) {
+          if (isCurrent) {
+            setEmailStatus("taken");
+            setEmailFeedback("Email is already has been used please enter a new email");
+          }
+          return;
+        }
+
+        const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(trimmed)}`);
+        const data = await res.json();
+
+        if (!isCurrent) return;
+
+        if (data.exists === true) {
+          setEmailStatus("taken");
+          setEmailFeedback("Email is already has been used please enter a new email");
+        } else {
+          setEmailStatus("available");
+          setEmailFeedback("Email is available");
+        }
+      } catch (err) {
+        if (!isCurrent) return;
+        setEmailStatus("available");
+        setEmailFeedback("Email is available");
+      }
+    }, 350);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [email, mode]);
 
   // Live debounced username availability check for signup with race-condition protection
   useEffect(() => {
@@ -184,7 +275,7 @@ export default function Login() {
         const res = await fetch(`/api/auth/check-username?username=${encodeURIComponent(trimmed)}`);
         const data = await res.json();
 
-        if (!isCurrent) return; // Prevent race conditions from slow previous fetches
+        if (!isCurrent) return;
 
         if (data.available === false) {
           setUsernameStatus("taken");
@@ -478,11 +569,22 @@ export default function Login() {
         return;
       }
 
+      // Check email against local registry and status
+      const isEmailTaken = checkLocalEmailTaken(cleanEmail) || emailStatus === "taken";
+      if (isEmailTaken) {
+        setEmailStatus("taken");
+        setEmailFeedback("Email is already has been used please enter a new email");
+        setMessage("Email is already has been used please enter a new email");
+        setMessageType("error");
+        setIsLoading(false);
+        return;
+      }
+
       // Check username against local registry and current status
       const isUsernameTaken = checkLocalUsernameTaken(cleanUsername) || usernameStatus === "taken";
       if (isUsernameTaken) {
         setUsernameStatus("taken");
-        setUsernameFeedback("This username is already taken. Please choose another.");
+        setUsernameFeedback("Username is already taken. Please choose another.");
         setMessage("Username is already taken. Please choose another.");
         setMessageType("error");
         setIsLoading(false);
@@ -540,8 +642,8 @@ export default function Login() {
         });
 
         if (authError) {
-          if (authError.message.toLowerCase().includes("user already registered")) {
-            setMessage("An account with this email already exists. Please log in.");
+          if (authError.message.toLowerCase().includes("already registered") || authError.message.toLowerCase().includes("email")) {
+            setMessage("Email is already has been used please enter a new email");
             setMessageType("error");
             setIsLoading(false);
             return;
@@ -549,7 +651,7 @@ export default function Login() {
         } else if (authData?.user) {
           try {
             await supabase.from("user_profiles").upsert({
-              id: authData.user.id,
+              user_id: authData.user.id,
               email: cleanEmail,
               username: cleanUsername,
               name: cleanName
@@ -571,7 +673,7 @@ export default function Login() {
       };
       localStorage.setItem("spendwise_users", JSON.stringify(users));
 
-      // Clear any prior user's onboarding from localStorage and set active user
+      // Clear any prior user's onboarding & financial data from localStorage
       localStorage.removeItem("spendwise_onboarding");
       localStorage.setItem("spendwise_active_user", cleanUsername);
 
@@ -588,7 +690,6 @@ export default function Login() {
       });
       setStep("onboarding_1");
       setIsLoading(false);
-      return;
     }
 
     // 2. Validation for Login: Accepts Email or Username + Password
@@ -1050,7 +1151,13 @@ export default function Login() {
               <span className="mb-2 block text-sm text-zinc-400">
                 {mode === "login" ? "Email or Username" : "Email Address"}
               </span>
-              <div className="flex items-center rounded-xl border border-zinc-800 bg-zinc-900 px-3 focus-within:border-violet-500 transition-colors">
+              <div className={`flex items-center rounded-xl border bg-zinc-900 px-3 transition-colors ${
+                mode === "signup" && emailStatus === "available"
+                  ? "border-emerald-500/60 focus-within:border-emerald-400"
+                  : mode === "signup" && (emailStatus === "taken" || emailStatus === "invalid")
+                  ? "border-rose-500/60 focus-within:border-rose-400"
+                  : "border-zinc-800 focus-within:border-violet-500"
+              }`}>
                 <Mail size={18} className="text-zinc-500" />
                 <input
                   className="w-full bg-transparent px-3 py-3.5 outline-none text-zinc-100 placeholder-zinc-500 text-sm"
@@ -1065,7 +1172,45 @@ export default function Login() {
                   autoComplete={mode === "login" ? "username" : "email"}
                   aria-label={mode === "login" ? "Email or Username" : "Email Address"}
                 />
+                {mode === "signup" && emailStatus === "checking" && (
+                  <Loader2 size={16} className="animate-spin text-violet-400 ml-2 shrink-0" />
+                )}
+                {mode === "signup" && emailStatus === "available" && (
+                  <CheckCircle2 size={16} className="text-emerald-400 ml-2 shrink-0" />
+                )}
+                {mode === "signup" && emailStatus === "taken" && (
+                  <XCircle size={16} className="text-rose-400 ml-2 shrink-0" />
+                )}
               </div>
+
+              {mode === "signup" && email.trim() !== "" && (
+                <div className="mt-1.5 px-0.5">
+                  {emailStatus === "checking" && (
+                    <div className="flex items-center gap-1.5 text-xs text-violet-400">
+                      <Loader2 size={13} className="animate-spin shrink-0" />
+                      <span>Checking email availability...</span>
+                    </div>
+                  )}
+                  {emailStatus === "available" && (
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                      <CheckCircle2 size={13} className="shrink-0" />
+                      <span>{emailFeedback}</span>
+                    </div>
+                  )}
+                  {emailStatus === "taken" && (
+                    <div className="flex items-center gap-1.5 text-xs text-rose-400 font-medium">
+                      <XCircle size={13} className="shrink-0" />
+                      <span>{emailFeedback}</span>
+                    </div>
+                  )}
+                  {emailStatus === "invalid" && (
+                    <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>{emailFeedback}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </label>
 
             {mode === "signup" && (

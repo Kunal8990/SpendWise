@@ -23,6 +23,11 @@ export type EMI = {
   monthlyAmount: number;
   deductionDate: number; // 1-31
   startDate: string; // YYYY-MM-DD
+  interestRate?: number; // Annual interest rate percentage (e.g. 10.5)
+  totalInterest?: number; // Total interest over tenure
+  totalPayable?: number; // Principal + Total Interest
+  category?: string;
+  notes?: string;
 };
 
 export type UserProfile = {

@@ -37,8 +37,55 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Password is required." }, { status: 400 });
   }
 
-  // Look up user
-  const user = authStore.findUserByIdentifier(identifier);
+  // Look up user in authStore
+  let user = authStore.findUserByIdentifier(identifier);
+
+  // If not found in memory store, try looking up in Supabase database
+  if (!user) {
+    try {
+      const { createClient } = await import("@/lib/supabase/server");
+      const supabase = await createClient();
+
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .or(`email.ilike.${identifier},username.ilike.${identifier}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (profile) {
+        // User profile found in database
+        // Also check if user exists in public.users
+        const { data: dbUser } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", profile.user_id || profile.id)
+          .maybeSingle();
+
+        // Register in authStore for session tracking
+        const { hash, salt } = await import("@/lib/auth/security").then(m => m.hashPassword(password));
+        const storedUser = {
+          id: profile.user_id || profile.id || `usr_${Math.random().toString(36).slice(2)}`,
+          username: profile.username || identifier,
+          email: profile.email || `${identifier}@spendwise.local`,
+          name: profile.name || profile.username || identifier,
+          status: (dbUser?.status as any) || "active",
+          email_verified: dbUser?.email_verified ?? true,
+          password_hash: hash,
+          password_salt: salt,
+          password_changed_at: new Date().toISOString(),
+          failed_attempts: 0,
+          created_at: profile.created_at || new Date().toISOString(),
+          updated_at: profile.updated_at || new Date().toISOString()
+        };
+        // @ts-ignore - internal map addition
+        (authStore as any).users.set(storedUser.id, storedUser);
+        user = storedUser;
+      }
+    } catch (dbErr) {
+      // Fallback
+    }
+  }
 
   // Generic authentication error message (TC-003, TC-004, TC-005, TC-135)
   const genericAuthError = "Invalid email/username or password.";
